@@ -1,6 +1,6 @@
 const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
-
+const { sequelize } = require('../../config/database');
+const db = require('../../config/database');
 const Tenant = sequelize.define('Tenant', {
   id: {
     type: DataTypes.UUID,

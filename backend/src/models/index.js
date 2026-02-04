@@ -11,6 +11,7 @@ const CampaignMetricsDaily = require('../modules/google/campaign-metrics-daily.m
 const Recommendation = require('../modules/recommendations/recommendation.model');
 const AuditLog = require('../modules/audit/audit-log.model');
 const ApplyRun = require('../modules/apply/apply-run.model');
+const db = require('../config/database');
 
 // Define relationships
 
