@@ -1,6 +1,6 @@
 const { Worker } = require('bullmq');
 const redis = require('../config/redis');
-const { GoogleCustomer, Campaign, CampaignMetricsDaily, GoogleAccount } = const { ... } = require('../models')
+const { GoogleCustomer, Campaign, CampaignMetricsDaily, GoogleAccount } = require('../../config/database');
 const googleAdsClient = require('../google/googleAds.client');
 
 const syncWorker = new Worker('sync', async (job) => {
