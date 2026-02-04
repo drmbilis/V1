@@ -1,6 +1,5 @@
 const { DataTypes } = require('sequelize');
-const { sequelize } = require('../config/database');
-
+const { sequelize } = require('../../config/database')
 const CampaignMetricsDaily = sequelize.define('CampaignMetricsDaily', {
   id: {
     type: DataTypes.UUID,
