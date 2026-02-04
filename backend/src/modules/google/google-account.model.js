@@ -1,5 +1,5 @@
 const { DataTypes } = require('sequelize');
-const { sequelize } = ;require('../../config/database')
+const { sequelize } = require('../../config/database')
 const { encrypt, decrypt } = require('../../utils/encryption');
 
 const GoogleAccount = sequelize.define('GoogleAccount', {
