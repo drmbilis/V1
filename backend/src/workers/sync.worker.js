@@ -1,5 +1,5 @@
 const { Worker } = require('bullmq');
-const redisConnection = require('../../config/redis');
+const redis = require('../config/redis');
 const { GoogleCustomer, Campaign, CampaignMetricsDaily, GoogleAccount } = require('../../models');
 const googleAdsClient = require('../google/googleAds.client');
 
