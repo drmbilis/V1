@@ -5,9 +5,6 @@ FROM base AS backend-builder
 WORKDIR /app/backend
 COPY backend/package*.json ./
 RUN apk add --no-cache python3 make g++ libc6-compat
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
-    && rm -rf /var/lib/apt/lists/*
-
 RUN npm ci --omit=dev --no-audit --no-fund || (echo "---- NPM LOGS ----" && ls -la /root/.npm/_logs || true && cat /root/.npm/_logs/* || true && exit 1)
 COPY backend/ ./
 
