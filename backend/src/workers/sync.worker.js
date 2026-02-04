@@ -1,7 +1,8 @@
 const { Worker } = require('bullmq');
-const redis = require('../config/redis');
-const { GoogleCustomer, Campaign, CampaignMetricsDaily, GoogleAccount } = require('../../config/database');
-const googleAdsClient = require('../google/googleAds.client');
+const redis = require('../config/redis'); // Yol düzeltildi
+const { sequelize } = require('../config/database'); // Yol düzeltildi
+const { GoogleCustomer, Campaign, CampaignMetricsDaily, GoogleAccount } = require('../models'); // Modeller buradan çekilmeli
+const googleAdsClient = require('../modules/google/googleAds.client'); // Klasör yapına göre güncellendi
 
 const syncWorker = new Worker('sync', async (job) => {
   const { type, tenantId, customerId } = job.data;
@@ -25,7 +26,7 @@ const syncWorker = new Worker('sync', async (job) => {
   } catch (error) {
     console.error(`[Sync Worker] Error in ${type}:`, error);
     
-    // Update Google customer status on error
+    // Hata durumunda müşteri durumunu pasife çek
     if (customerId) {
       await GoogleCustomer.update(
         { 
@@ -39,12 +40,13 @@ const syncWorker = new Worker('sync', async (job) => {
     throw error;
   }
 }, {
-  connection: redisConnection,
+  connection: redis, // redisConnection hatası düzeltildi, config/redis'ten gelen nesne kullanıldı
   concurrency: 5
 });
 
+// --- Yardımcı Fonksiyonlar ---
+
 async function syncCustomers(tenantId) {
-  // Get Google account for this tenant
   const googleAccount = await GoogleAccount.findOne({
     where: { tenantId, status: 'active' }
   });
@@ -54,16 +56,11 @@ async function syncCustomers(tenantId) {
   }
 
   const refreshToken = googleAccount.getRefreshToken();
-  
-  // Fetch accessible customers
   const customerResources = await googleAdsClient.listAccessibleCustomers(refreshToken);
   
   const synced = [];
-  
   for (const resource of customerResources) {
     const customerId = resource.replace('customers/', '');
-    
-    // Get customer details
     const customerInfo = await googleAdsClient.getCustomerInfo(customerId, refreshToken);
     
     const [customer, created] = await GoogleCustomer.findOrCreate({
@@ -82,10 +79,8 @@ async function syncCustomers(tenantId) {
       customer.status = 'active';
       await customer.save();
     }
-
     synced.push(customerId);
   }
-
   return { synced: synced.length, customers: synced };
 }
 
@@ -94,24 +89,15 @@ async function syncCampaigns(tenantId, customerId) {
     where: { tenantId, status: 'active' }
   });
 
-  if (!googleAccount) {
-    throw new Error('No active Google account found');
-  }
+  if (!googleAccount) throw new Error('No active Google account found');
 
   const refreshToken = googleAccount.getRefreshToken();
-  
-  // Fetch campaigns from Google Ads
   const campaigns = await googleAdsClient.getCampaigns(customerId, refreshToken);
   
   const synced = [];
-  
   for (const gCampaign of campaigns) {
     const [campaign, created] = await Campaign.findOrCreate({
-      where: { 
-        tenantId, 
-        customerId, 
-        campaignId: gCampaign.campaign_id 
-      },
+      where: { tenantId, customerId, campaignId: gCampaign.campaign_id },
       defaults: {
         name: gCampaign.name,
         status: gCampaign.status,
@@ -120,10 +106,7 @@ async function syncCampaigns(tenantId, customerId) {
         biddingStrategy: gCampaign.bidding_strategy,
         startDate: gCampaign.start_date,
         endDate: gCampaign.end_date,
-        metadata: { 
-          labels: gCampaign.labels || [],
-          settings: gCampaign.settings || {}
-        }
+        metadata: { labels: gCampaign.labels || [], settings: gCampaign.settings || {} }
       }
     });
 
@@ -133,11 +116,9 @@ async function syncCampaigns(tenantId, customerId) {
       campaign.budget = gCampaign.budget;
       await campaign.save();
     }
-
     synced.push(campaign.campaignId);
   }
 
-  // Update Google customer last sync time
   await GoogleCustomer.update(
     { metadata: { lastCampaignSync: new Date() } },
     { where: { tenantId, customerId } }
@@ -151,32 +132,17 @@ async function syncMetricsDaily(tenantId, customerId, dateRange = 30) {
     where: { tenantId, status: 'active' }
   });
 
-  if (!googleAccount) {
-    throw new Error('No active Google account found');
-  }
+  if (!googleAccount) throw new Error('No active Google account found');
 
   const refreshToken = googleAccount.getRefreshToken();
-  
-  // Fetch metrics from Google Ads
-  const metricsData = await googleAdsClient.getCampaignMetrics(
-    customerId, 
-    refreshToken, 
-    dateRange
-  );
+  const metricsData = await googleAdsClient.getCampaignMetrics(customerId, refreshToken, dateRange);
   
   const synced = [];
-  
   for (const metric of metricsData) {
-    // Format date properly (YYYY-MM-DD)
     const formattedDate = metric.date.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
     
     const [record, created] = await CampaignMetricsDaily.findOrCreate({
-      where: {
-        tenantId,
-        customerId,
-        campaignId: metric.campaign_id,
-        date: formattedDate
-      },
+      where: { tenantId, customerId, campaignId: metric.campaign_id, date: formattedDate },
       defaults: {
         impressions: metric.impressions,
         clicks: metric.clicks,
@@ -190,7 +156,6 @@ async function syncMetricsDaily(tenantId, customerId, dateRange = 30) {
     });
 
     if (!created) {
-      // Update existing record
       record.impressions = metric.impressions;
       record.clicks = metric.clicks;
       record.costMicros = metric.cost_micros;
@@ -201,11 +166,9 @@ async function syncMetricsDaily(tenantId, customerId, dateRange = 30) {
       record.conversionRate = metric.conversion_rate;
       await record.save();
     }
-
     synced.push({ campaignId: metric.campaign_id, date: formattedDate });
   }
 
-  // Update Google customer last sync time
   await GoogleCustomer.update(
     { metadata: { lastMetricsSync: new Date() } },
     { where: { tenantId, customerId } }
@@ -214,6 +177,7 @@ async function syncMetricsDaily(tenantId, customerId, dateRange = 30) {
   return { synced: synced.length, metrics: synced };
 }
 
+// Olay Dinleyicileri
 syncWorker.on('completed', (job) => {
   console.log(`[Sync Worker] Job ${job.id} completed:`, job.returnvalue);
 });
