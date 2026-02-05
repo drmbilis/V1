@@ -6,7 +6,26 @@ const { generateToken } = require('../../utils/jwt');
 const { syncQueue } = require('../jobs/queues');
 const { authenticate } = require('../../middleware/auth');
 
+<<<<<<< HEAD
 const handleGoogleStart = (req, res) => {
+=======
+// @route   GET /api/v1/auth/google/start
+// @desc    Get Google OAuth URL
+// @access  Public
+// modules/auth/auth.routes.js
+
+// Bu yeni rota frontend'deki butonun direkt çalışmasını sağlayacak
+router.get('/google', (req, res) => {
+  try {
+    const authUrl = googleAuthService.getAuthUrl();
+    res.redirect(authUrl); // JSON yerine direkt Google'a fırlatıyoruz!
+  } catch (error) {
+    console.error('Auth redirect error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
+router.get('/google/start', (req, res) => {
+>>>>>>> e41045c (feat: full stack sync - backend google redirect and frontend layout complete)
   try {
     const authUrl = googleAuthService.getAuthUrl();
     res.json({
