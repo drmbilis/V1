@@ -25,7 +25,11 @@ class GoogleAuthService {
   }
 
   async getTokens(code) {
-    const { tokens } = await this.oauth2Client.getToken(code);
+    // BURASI KRİTİK: Google'a kodu gönderirken hangi URI ile istediğimizi tekrar teyit ediyoruz.
+    const { tokens } = await this.oauth2Client.getToken({
+      code: code,
+      redirect_uri: process.env.GOOGLE_REDIRECT_URI
+    });
     return tokens;
   }
 
