@@ -50,46 +50,59 @@ export default function MetricsChart({
     );
   }
 
-  const ChartComponent = type === 'area' ? AreaChart : LineChart;
-  const DataComponent = type === 'area' ? Area : Line;
+  // Ortak bileşenleri bir fonksiyon olarak tanımlayalım
+  const renderGridAndAxes = () => (
+    <>
+      <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
+      <XAxis dataKey="date" stroke="#6b7280" fontSize={12} />
+      <YAxis stroke="#6b7280" fontSize={12} />
+      <Tooltip
+        contentStyle={{
+          backgroundColor: '#fff',
+          border: '1px solid #e5e7eb',
+          borderRadius: '8px',
+          boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
+        }}
+      />
+      <Legend />
+    </>
+  );
 
   return (
     <ResponsiveContainer width="100%" height={height}>
-      <ChartComponent data={data}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
-        <XAxis
-          dataKey="date"
-          stroke="#6b7280"
-          fontSize={12}
-        />
-        <YAxis
-          stroke="#6b7280"
-          fontSize={12}
-        />
-        <Tooltip
-          contentStyle={{
-            backgroundColor: '#fff',
-            border: '1px solid #e5e7eb',
-            borderRadius: '8px',
-            boxShadow: '0 4px 6px -1px rgb(0 0 0 / 0.1)'
-          }}
-        />
-        <Legend />
-        {metrics.map((metric) => (
-          <DataComponent
-            key={metric}
-            type="monotone"
-            dataKey={metric}
-            stroke={metricColors[metric] || '#3b82f6'}
-            fill={type === 'area' ? metricColors[metric] : undefined}
-            fillOpacity={type === 'area' ? 0.3 : undefined}
-            strokeWidth={2}
-            name={metricLabels[metric] || metric}
-            dot={false}
-            activeDot={{ r: 6 }}
-          />
-        ))}
-      </ChartComponent>
+      {type === 'area' ? (
+        <AreaChart data={data}>
+          {renderGridAndAxes()}
+          {metrics.map((metric) => (
+            <Area
+              key={metric}
+              type="monotone"
+              dataKey={metric}
+              stroke={metricColors[metric] || '#3b82f6'}
+              fill={metricColors[metric] || '#3b82f6'}
+              fillOpacity={0.3}
+              strokeWidth={2}
+              name={metricLabels[metric] || metric}
+            />
+          ))}
+        </AreaChart>
+      ) : (
+        <LineChart data={data}>
+          {renderGridAndAxes()}
+          {metrics.map((metric) => (
+            <Line
+              key={metric}
+              type="monotone"
+              dataKey={metric}
+              stroke={metricColors[metric] || '#3b82f6'}
+              strokeWidth={2}
+              name={metricLabels[metric] || metric}
+              dot={false}
+              activeDot={{ r: 6 }}
+            />
+          ))}
+        </LineChart>
+      )}
     </ResponsiveContainer>
   );
 }
