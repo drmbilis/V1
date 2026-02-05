@@ -18,7 +18,7 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(morgan('dev'));
 
-// Health check
+// Health check - Bu çalışıyor, dokunmadım
 app.get('/health', async (req, res) => {
   const dbOk = await testConnection();
   res.json({ 
@@ -29,9 +29,6 @@ app.get('/health', async (req, res) => {
   });
 });
 
-// API Routes
-const apiVersion = process.env.API_VERSION || 'v1';
-
 // Import routes
 const authRoutes = require('./modules/auth/auth.routes');
 const customersRoutes = require('./modules/google/customers.routes');
@@ -39,6 +36,9 @@ const campaignsRoutes = require('./modules/google/campaigns.routes');
 const jobsRoutes = require('./modules/jobs/jobs.routes');
 const recommendationsRoutes = require('./modules/recommendations/recommendations.routes');
 const applyRoutes = require('./modules/apply/apply.routes');
+
+// API Routes - API_VERSION belirsizliğini v1 olarak sabitledik
+const apiVersion = 'v1'; 
 
 // Public routes
 app.use(`/api/${apiVersion}/auth`, authRoutes);
@@ -53,10 +53,8 @@ app.use(`/api/${apiVersion}/apply`, applyRoutes);
 // Error handling
 app.use((err, req, res, next) => {
   console.error('Error:', err);
-  
   const statusCode = err.statusCode || 500;
   const message = err.message || 'Internal Server Error';
-  
   res.status(statusCode).json({
     success: false,
     error: message,
@@ -64,25 +62,26 @@ app.use((err, req, res, next) => {
   });
 });
 
-// 404 handler
+// 404 handler - Eğer hiçbir rotaya girmezse burası çalışır
 app.use((req, res) => {
   res.status(404).json({
     success: false,
-    error: 'Route not found'
+    error: `Route not found: ${req.method} ${req.url}`
   });
 });
 
 const PORT = process.env.PORT || 5000;
 
+// Sunucuyu ayağa kaldır
 app.listen(PORT, async () => {
   console.log(`🚀 Server running on port ${PORT}`);
-  console.log(`📊 Environment: ${process.env.NODE_ENV}`);
+  console.log(`📊 API Base Path: /api/v1`);
   
   const dbOk = await testConnection();
   if (dbOk) {
     console.log('✅ Ready to accept requests');
   } else {
-    console.log('⚠️  Database connection failed - check your configuration');
+    console.log('⚠️  Database connection failed');
   }
 });
 
