@@ -7,9 +7,7 @@ export default function SafetyNet() {
   const [settings, setSettings] = useState({
     dailyLimit: 100,
     monthlyLimit: 3000,
-    autoP
-
-ause: true,
+    autoPause: true,
     sendEmail: true,
     sendSMS: false,
     email: '',
