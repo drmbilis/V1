@@ -33,6 +33,11 @@ services:
       context: .
       dockerfile: Dockerfile
     container_name: google-ads-api
+    # --- BURASI DIŞARIYA AÇILAN KAPI ---
+    labels:
+      - "caddy_0=https://api.qreative.com.tr"
+      - "caddy_0.reverse_proxy={{upstreams 5000}}"
+    # ----------------------------------
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,7 +65,7 @@ services:
       DEEPSEEK_API_KEY: ${DEEPSEEK_API_KEY}
       FRONTEND_URL: ${FRONTEND_URL}
     ports:
-      - "${PORT:-5000}:5000"
+      - "5000:5000"
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:5000/health"]
