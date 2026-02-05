@@ -8,6 +8,18 @@ const { syncQueue } = require('../jobs/queues');
 // @route   GET /api/v1/auth/google/start
 // @desc    Get Google OAuth URL
 // @access  Public
+// modules/auth/auth.routes.js
+
+// Bu yeni rota frontend'deki butonun direkt çalışmasını sağlayacak
+router.get('/google', (req, res) => {
+  try {
+    const authUrl = googleAuthService.getAuthUrl();
+    res.redirect(authUrl); // JSON yerine direkt Google'a fırlatıyoruz!
+  } catch (error) {
+    console.error('Auth redirect error:', error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});
 router.get('/google/start', (req, res) => {
   try {
     const authUrl = googleAuthService.getAuthUrl();
