@@ -23,13 +23,11 @@ class GoogleAdsClient {
   // HATALI OLAN KISIM DÜZELTİLDİ: Artık doğrudan Service üzerinden çağrılıyor.
   async listAccessibleCustomers(refreshToken) {
     try {
-      const customerService = this.client.Service({
-        refresh_token: refreshToken,
-      });
-      const response = await customerService.listAccessibleCustomers();
-      return response.resource_names || [];
+      // YENİ VERSİYON STANDARTI: Doğrudan ana client üzerinden çağrılır
+      const response = await this.client.listAccessibleCustomers(refreshToken);
+      return response || [];
     } catch (error) {
-      console.error("Google Ads listAccessibleCustomers Hatası:", error.message);
+      console.error("Google Ads API v17+ Senkronizasyon Hatası:", error.message);
       return [];
     }
   }
