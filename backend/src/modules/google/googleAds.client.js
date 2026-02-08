@@ -10,36 +10,50 @@ class GoogleAdsClient {
     });
   }
 
+  // Müşteri nesnesini oluştururken login_customer_id opsiyoneldir, 
+  // varsa eklenmesi (Manager hesapları için) kritik önem taşır.
   getCustomer(customerId, refreshToken) {
     return this.client.Customer({
-      customer_id: customerId,
+      customer_id: customerId.replace(/-/g, ''), // Tireleri temizler
       refresh_token: refreshToken,
-      login_customer_id: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID
+      login_customer_id: process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID || undefined
     });
   }
 
+  // HATALI OLAN KISIM DÜZELTİLDİ: Artık doğrudan Service üzerinden çağrılıyor.
   async listAccessibleCustomers(refreshToken) {
-    const customer = this.getCustomer('0', refreshToken);
-    const response = await customer.listAccessibleCustomers();
-    return response.resource_names || [];
+    try {
+      const customerService = this.client.Service({
+        refresh_token: refreshToken,
+      });
+      const response = await customerService.listAccessibleCustomers();
+      return response.resource_names || [];
+    } catch (error) {
+      console.error("Google Ads listAccessibleCustomers Hatası:", error.message);
+      return [];
+    }
   }
 
   async getCustomerInfo(customerId, refreshToken) {
-    const customer = this.getCustomer(customerId, refreshToken);
-    
-    const query = `
-      SELECT
-        customer.id,
-        customer.descriptive_name,
-        customer.currency_code,
-        customer.time_zone,
-        customer.manager
-      FROM customer
-      WHERE customer.id = ${customerId}
-    `;
+    try {
+      const customer = this.getCustomer(customerId, refreshToken);
+      const query = `
+        SELECT
+          customer.id,
+          customer.descriptive_name,
+          customer.currency_code,
+          customer.time_zone,
+          customer.manager
+        FROM customer
+        WHERE customer.id = ${customerId.replace(/-/g, '')}
+      `;
 
-    const [result] = await customer.query(query);
-    return result?.customer || null;
+      const [result] = await customer.query(query);
+      return result?.customer || null;
+    } catch (error) {
+      console.error(`CustomerInfo Hatası (${customerId}):`, error.message);
+      return null;
+    }
   }
 
   async getCampaigns(customerId, refreshToken) {
@@ -125,27 +139,19 @@ class GoogleAdsClient {
 
   async updateCampaignStatus(customerId, refreshToken, campaignId, status) {
     const customer = this.getCustomer(customerId, refreshToken);
-    
     const operation = {
       resource_name: `customers/${customerId}/campaigns/${campaignId}`,
       status
     };
-
-    const response = await customer.campaigns.update(operation, {
+    return await customer.campaigns.update(operation, {
       update_mask: ['status']
     });
-
-    return response;
   }
 
   async updateCampaignBudget(customerId, refreshToken, campaignId, budgetMicros) {
     const customer = this.getCustomer(customerId, refreshToken);
-    
-    // First get the campaign to find its budget
     const query = `
-      SELECT
-        campaign.id,
-        campaign_budget.resource_name
+      SELECT campaign_budget.resource_name
       FROM campaign
       WHERE campaign.id = ${campaignId}
     `;
@@ -153,21 +159,16 @@ class GoogleAdsClient {
     const [result] = await customer.query(query);
     const budgetResourceName = result?.campaign_budget?.resource_name;
 
-    if (!budgetResourceName) {
-      throw new Error('Campaign budget not found');
-    }
+    if (!budgetResourceName) throw new Error('Campaign budget not found');
 
-    // Update the budget
     const operation = {
       resource_name: budgetResourceName,
       amount_micros: budgetMicros
     };
 
-    const response = await customer.campaignBudgets.update(operation, {
+    return await customer.campaignBudgets.update(operation, {
       update_mask: ['amount_micros']
     });
-
-    return response;
   }
 }
 
