@@ -4,11 +4,9 @@ const { User, Tenant, TenantUser, GoogleAccount, GoogleCustomer } = require('../
 const googleAuthService = require('./googleAuth.service');
 const { generateToken } = require('../../utils/jwt');
 const { syncQueue } = require('../jobs/queues');
+const { authenticate } = require('../../middleware/auth');
 
-// @route   GET /api/v1/auth/google/start
-// @desc    Get Google OAuth URL
-// @access  Public
-router.get('/google/start', (req, res) => {
+const handleGoogleStart = (req, res) => {
   try {
     const authUrl = googleAuthService.getAuthUrl();
     res.json({
@@ -21,7 +19,17 @@ router.get('/google/start', (req, res) => {
       error: error.message
     });
   }
-});
+};
+
+// @route   GET /api/v1/auth/google
+// @desc    Get Google OAuth URL (alias)
+// @access  Public
+router.get('/google', handleGoogleStart);
+
+// @route   GET /api/v1/auth/google/start
+// @desc    Get Google OAuth URL
+// @access  Public
+router.get('/google/start', handleGoogleStart);
 
 // @route   GET /api/v1/auth/google/callback
 // @desc    Handle Google OAuth callback
@@ -130,7 +138,7 @@ router.get('/google/callback', async (req, res) => {
 // @route   POST /api/v1/auth/logout
 // @desc    Logout user
 // @access  Private
-router.post('/logout', async (req, res) => {
+router.post('/logout', authenticate, async (req, res) => {
   res.json({
     success: true,
     message: 'Logged out successfully'
@@ -140,7 +148,7 @@ router.post('/logout', async (req, res) => {
 // @route   GET /api/v1/auth/me
 // @desc    Get current user
 // @access  Private
-router.get('/me', async (req, res) => {
+router.get('/me', authenticate, async (req, res) => {
   try {
     const user = await User.findByPk(req.user.id, {
       attributes: { exclude: ['password'] },
