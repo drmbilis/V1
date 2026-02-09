@@ -5,28 +5,34 @@ const { GoogleCustomer, Campaign, CampaignMetricsDaily, GoogleAccount } = requir
 const googleAdsClient = require('../modules/google/googleAds.client'); 
 
 const syncWorker = new Worker('sync', async (job) => {
-  const { type, tenantId, customerId } = job.data;
+  // Hem tenantId hem userId kontrolü (undefined hatasını önlemek için)
+  const { type, tenantId, userId, customerId } = job.data;
+  const activeTenantId = tenantId || userId; 
 
-  console.log(`[Sync Worker] Processing ${type} for tenant ${tenantId} | customer ${customerId || 'N/A'}`);
+  console.log(`[Sync Worker] 🚀 İşlem Başladı: ${type} | Tenant: ${activeTenantId} | Customer: ${customerId || 'N/A'}`);
+
+  if (!activeTenantId) {
+    console.error(`[Sync Worker] ❌ KRİTİK HATA: İş verisi içinde tenantId veya userId bulunamadı!`);
+    return;
+  }
 
   try {
     switch (type) {
       case 'sync_customers':
-        return await syncCustomers(tenantId);
+        return await syncCustomers(activeTenantId);
       
       case 'sync_campaigns':
-        return await syncCampaigns(tenantId, customerId);
+        return await syncCampaigns(activeTenantId, customerId);
       
       case 'sync_metrics_daily':
-        return await syncMetricsDaily(tenantId, customerId, job.data.dateRange);
+        return await syncMetricsDaily(activeTenantId, customerId, job.data.dateRange);
       
       default:
-        throw new Error(`Unknown sync type: ${type}`);
+        throw new Error(`Bilinmeyen senkronizasyon tipi: ${type}`);
     }
   } catch (error) {
-    console.error(`[Sync Worker] Error in ${type}:`, error.message);
+    console.error(`[Sync Worker] ❌ ${type} Hatası:`, error.message);
     
-    // Hata durumunda müşteri durumunu pasife çek (customerId varsa)
     if (customerId) {
       try {
         await GoogleCustomer.update(
@@ -34,13 +40,12 @@ const syncWorker = new Worker('sync', async (job) => {
             status: 'inactive',
             metadata: { lastError: error.message, errorAt: new Date() }
           },
-          { where: { tenantId, customerId } }
+          { where: { tenantId: activeTenantId, customerId } }
         );
       } catch (dbErr) {
-        console.error(`[Sync Worker] Could not update customer status:`, dbErr.message);
+        console.error(`[Sync Worker] Müşteri durumu güncellenemedi:`, dbErr.message);
       }
     }
-    
     throw error;
   }
 }, {
@@ -56,26 +61,27 @@ async function syncCustomers(tenantId) {
   });
 
   if (!googleAccount) {
-    throw new Error(`No active Google account found for tenant: ${tenantId}`);
+    throw new Error(`Tenant için aktif Google hesabı bulunamadı: ${tenantId}`);
   }
 
   const refreshToken = googleAccount.getRefreshToken();
-  const customerResources = await googleAdsClient.listAccessibleCustomers(refreshToken);
+  const response = await googleAdsClient.listAccessibleCustomers(refreshToken);
   
-  // HATA ÇÖZÜMÜ: Eğer veri gelmezse veya dizi değilse boş dizi kabul et
-  if (!customerResources || !Array.isArray(customerResources)) {
-    console.warn(`[Sync Worker] No customers found or invalid API response for tenant: ${tenantId}`);
+  // ✅ KRİTİK DÜZELTME: Google bazen direkt dizi, bazen de resource_names objesi döner.
+  const customerResources = Array.isArray(response) ? response : (response.resource_names || []);
+  
+  if (customerResources.length === 0) {
+    console.warn(`[Sync Worker] ⚠️ Erişilebilir müşteri bulunamadı: ${tenantId}`);
     return { synced: 0, customers: [] };
   }
 
   const synced = [];
   for (const resource of customerResources) {
     try {
-      // 'customers/123456789' formatından ID'yi al
+      // 'customers/123456789' formatından ID'yi güvenli al
       const customerId = resource.includes('/') ? resource.split('/')[1] : resource;
       
       const customerInfo = await googleAdsClient.getCustomerInfo(customerId, refreshToken);
-      
       if (!customerInfo) continue;
 
       const [customer, created] = await GoogleCustomer.findOrCreate({
@@ -85,40 +91,37 @@ async function syncCustomers(tenantId) {
           currency: customerInfo.currency_code,
           timezone: customerInfo.time_zone,
           status: 'active',
-          metadata: { manager: customerInfo.manager }
+          metadata: { manager: customerInfo.manager || false }
         }
       });
 
       if (!created) {
-        customer.descriptiveName = customerInfo.descriptive_name;
-        customer.status = 'active';
-        customer.metadata = { ...customer.metadata, manager: customerInfo.manager };
-        await customer.save();
+        await customer.update({
+          descriptiveName: customerInfo.descriptive_name,
+          status: 'active',
+          metadata: { ...customer.metadata, manager: customerInfo.manager }
+        });
       }
       synced.push(customerId);
     } catch (err) {
-      console.error(`[Sync Worker] Individual customer sync failed for ${resource}:`, err.message);
+      console.error(`[Sync Worker] Müşteri (${resource}) senkronize edilemedi:`, err.message);
     }
   }
   return { synced: synced.length, customers: synced };
 }
 
 async function syncCampaigns(tenantId, customerId) {
-  const googleAccount = await GoogleAccount.findOne({
-    where: { tenantId, status: 'active' }
-  });
-
-  if (!googleAccount) throw new Error('No active Google account found');
+  const googleAccount = await GoogleAccount.findOne({ where: { tenantId, status: 'active' } });
+  if (!googleAccount) throw new Error('Aktif Google hesabı bulunamadı');
 
   const refreshToken = googleAccount.getRefreshToken();
   const campaigns = await googleAdsClient.getCampaigns(customerId, refreshToken);
   
-  if (!campaigns || !Array.isArray(campaigns)) {
-    return { synced: 0, campaigns: [] };
-  }
+  // ✅ KRİTİK DÜZELTME: Kampanya listesi kontrolü
+  const campaignList = Array.isArray(campaigns) ? campaigns : [];
 
   const synced = [];
-  for (const gCampaign of campaigns) {
+  for (const gCampaign of campaignList) {
     const [campaign, created] = await Campaign.findOrCreate({
       where: { tenantId, customerId, campaignId: gCampaign.campaign_id },
       defaults: {
@@ -134,10 +137,11 @@ async function syncCampaigns(tenantId, customerId) {
     });
 
     if (!created) {
-      campaign.name = gCampaign.name;
-      campaign.status = gCampaign.status;
-      campaign.budget = gCampaign.budget;
-      await campaign.save();
+      await campaign.update({
+        name: gCampaign.name,
+        status: gCampaign.status,
+        budget: gCampaign.budget
+      });
     }
     synced.push(campaign.campaignId);
   }
@@ -151,21 +155,16 @@ async function syncCampaigns(tenantId, customerId) {
 }
 
 async function syncMetricsDaily(tenantId, customerId, dateRange = 30) {
-  const googleAccount = await GoogleAccount.findOne({
-    where: { tenantId, status: 'active' }
-  });
-
-  if (!googleAccount) throw new Error('No active Google account found');
+  const googleAccount = await GoogleAccount.findOne({ where: { tenantId, status: 'active' } });
+  if (!googleAccount) throw new Error('Aktif Google hesabı bulunamadı');
 
   const refreshToken = googleAccount.getRefreshToken();
   const metricsData = await googleAdsClient.getCampaignMetrics(customerId, refreshToken, dateRange);
   
-  if (!metricsData || !Array.isArray(metricsData)) {
-    return { synced: 0, metrics: [] };
-  }
+  const metricsList = Array.isArray(metricsData) ? metricsData : [];
 
   const synced = [];
-  for (const metric of metricsData) {
+  for (const metric of metricsList) {
     const formattedDate = metric.date.replace(/(\d{4})(\d{2})(\d{2})/, '$1-$2-$3');
     
     const [record, created] = await CampaignMetricsDaily.findOrCreate({
@@ -182,7 +181,7 @@ async function syncMetricsDaily(tenantId, customerId, dateRange = 30) {
       }
     });
 
-    if (!record.isNewRecord) {
+    if (!created) {
       await record.update({
         impressions: metric.impressions,
         clicks: metric.clicks,
@@ -197,21 +196,16 @@ async function syncMetricsDaily(tenantId, customerId, dateRange = 30) {
     synced.push({ campaignId: metric.campaign_id, date: formattedDate });
   }
 
-  await GoogleCustomer.update(
-    { metadata: { lastMetricsSync: new Date() } },
-    { where: { tenantId, customerId } }
-  );
-
   return { synced: synced.length, metrics: synced };
 }
 
 // Olay Dinleyicileri
 syncWorker.on('completed', (job) => {
-  console.log(`[Sync Worker] Job ${job.id} completed successfully.`);
+  console.log(`[Sync Worker] ✅ İş ${job.id} başarıyla tamamlandı.`);
 });
 
 syncWorker.on('failed', (job, err) => {
-  console.error(`[Sync Worker] Job ${job?.id} failed:`, err.message);
+  console.error(`[Sync Worker] ❌ İş ${job?.id} başarısız:`, err.message);
 });
 
 module.exports = syncWorker;
