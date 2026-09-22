@@ -1,5 +1,6 @@
 import React from 'react'; // React importu eklemek iyidir
 import Link from 'next/link';
+import { useAuthStore } from '@/store';
 import { useRouter } from 'next/router';
 import { 
   LayoutDashboard, 
@@ -16,6 +17,7 @@ import {
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const { logout } = useAuthStore();
 
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
@@ -27,8 +29,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
   ];
 
   const handleLogout = () => {
-    localStorage.removeItem('auth_token');
-    router.push('/');
+    logout();
+    router.push('/login');
   };
 
   return (
